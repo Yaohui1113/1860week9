@@ -1,0 +1,50 @@
+CHIP P2S {
+    IN indata[4], enable, load;
+    OUT sout, complete;
+
+    PARTS:
+    // Store the 4-bit input data when load=1
+    Bit(in=indata[0], load=load, out=storedData0);
+    Bit(in=indata[1], load=load, out=storedData1);
+    Bit(in=indata[2], load=load, out=storedData2);
+    Bit(in=indata[3], load=load, out=storedData3);
+
+    // State and counters
+    Bit(in=nextActive,   load=true, out=active);
+    Bit(in=nextCounter0, load=true, out=counter0);
+    Bit(in=nextCounter1, load=true, out=counter1);
+
+    // Transmission is complete when counter=3 (both bits=1) and active=1
+    And(a=counter0, b=counter1, out=counterIs3);
+    And(a=counterIs3, b=active, out=transmissionComplete);
+    Or(a=transmissionComplete, b=false, out=complete);
+
+    // Start transmission when enable=1 and not currently active
+    Not(in=active, out=notActive);
+    And(a=enable, b=notActive, out=startTransmission);
+
+    // Keep active=1 until transmissionComplete=1. After completion, active will drop.
+    Not(in=transmissionComplete, out=notTransmissionComplete);
+    And(a=active, b=notTransmissionComplete, out=activeAndNotComplete);
+    Or(a=startTransmission, b=activeAndNotComplete, out=nextActive);
+
+    // Counter logic: increment counter only when active=1.
+    // If startTransmission=1, reset the counter to 0.
+    Xor(a=counter0, b=active, out=incrementedCounter0);
+    And(a=counter0, b=active, out=carryOut0);
+    Xor(a=counter1, b=carryOut0, out=incrementedCounter1);
+
+    Mux(a=counter0, b=incrementedCounter0, sel=active, out=counterNext0);
+    Mux(a=counterNext0, b=false, sel=startTransmission, out=nextCounter0);
+
+    Mux(a=counter1, b=incrementedCounter1, sel=active, out=counterNext1);
+    Mux(a=counterNext1, b=false, sel=startTransmission, out=nextCounter1);
+
+    // Select which bit to output based on the counter value.
+    Mux(a=storedData0, b=storedData1, sel=counter0, out=muxLevel1Out0);
+    Mux(a=storedData2, b=storedData3, sel=counter0, out=muxLevel1Out1);
+    Mux(a=muxLevel1Out0, b=muxLevel1Out1, sel=counter1, out=selectedBit);
+
+    // Output selected bit only when active=1
+    And(a=selectedBit, b=active, out=sout);
+}
